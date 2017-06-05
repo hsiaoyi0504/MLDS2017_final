@@ -15,6 +15,7 @@ MAX_NUM_WORDS = 20000
 MAX_SEQUENCE_LENGTH = 1000
 VALIDATION_SPLIT = 0.2
 EMBEDDING_DIM = 100
+SEARCH_THRESHOLD = True
 
 unique_tags = set()
 tags = []
@@ -119,23 +120,29 @@ model.compile(loss='binary_crossentropy', optimizer='adam')
 model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=7, batch_size=32)
 
 y_train_preds = model.predict(x_train) 
-threshold = np.arange(0.1,0.9,0.1)
-acc = []
-accuracies = []
-best_threshold = np.zeros(y_train_preds.shape[1])
-for i in range(y_train_preds.shape[1]):
-    y_prob = np.array(y_train_preds[:,i])
-    for j in threshold:
-        y_pred = [1 if prob>=j else 0 for prob in y_prob]
-        acc.append( f1_score(y_train[:,i],y_pred))
-        acc = np.array(acc)
-        index = np.where(acc==acc.max()) 
-        accuracies.append(acc.max()) 
-        best_threshold[i] = threshold[index[0][0]]
-        acc = []
 
-y_test = model.predict(x_test)
-y_test = np.array([[1 if y_test[i,j]>=best_threshold[j] else 0 for j in range(y_test.shape[1])] for i in range(len(y_test))])
+if SEARCH_THRESHOLD:
+    threshold = np.arange(0.1,0.9,0.05)
+    acc = []
+    accuracies = []
+    best_threshold = np.zeros(y_train_preds.shape[1])
+    for i in range(y_train_preds.shape[1]):
+        y_prob = np.array(y_train_preds[:,i])
+        for j in threshold:
+            y_pred = [1 if prob>=j else 0 for prob in y_prob]
+            acc.append( f1_score(y_train[:,i],y_pred) )
+            acc = np.array(acc)
+            index = np.where(acc==acc.max()) 
+            accuracies.append(acc.max()) 
+            best_threshold[i] = threshold[index[0][0]]
+            acc = []
+
+    y_test = model.predict(x_test)
+    y_test = np.array([[1 if y_test[i,j]>=best_threshold[j] else 0 for j in range(y_test.shape[1])] for i in range(len(y_test))])
+else:
+    y_test = model.predict(x_test)
+    y_test = np.array([[1 if y_test[i,j]>=0.5 else 0 for j in range(y_test.shape[1])] for i in range(len(y_test))])
+
 labels_test = []
 for y in y_test:
     temp = []
