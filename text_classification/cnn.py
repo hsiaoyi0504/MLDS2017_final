@@ -4,7 +4,7 @@ import numpy as np
 np.random.seed(1166)
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
-from keras.layers import Embedding, Dense, Input, Flatten, Conv1D, MaxPooling1D, Embedding
+from keras.layers import Embedding, Dense, Input, Flatten, Conv1D, MaxPooling1D, Dropout
 from keras.layers.advanced_activations import ThresholdedReLU
 from keras.models import Model
 from keras import backend as K
@@ -102,20 +102,21 @@ for word, i in word_index.items():
 embedding_layer = Embedding(len(word_index) + 1, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_SEQUENCE_LENGTH, trainable=False)
 sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
 embedded_sequences = embedding_layer(sequence_input)
-x = Conv1D(256, 5, activation='relu')(embedded_sequences)
-x = MaxPooling1D(5)(x)
-x = Conv1D(256, 5, activation='relu')(x)
-x = MaxPooling1D(5)(x)
-x = Conv1D(256, 5, activation='relu')(x)
-x = MaxPooling1D(35)(x)  # global max pooling
+x = Conv1D(1024, 3, activation='relu')(embedded_sequences)
+x = MaxPooling1D(2)(x)
+x = Conv1D(512, 3, activation='relu')(x)
+x = MaxPooling1D(2)(x)
+x = Conv1D(256, 3, activation='relu')(x)
+x = MaxPooling1D(2)(x)
 x = Flatten()(x)
+x= Dropout(0.2, input_shape=(128,))(x)
 x = Dense(128, activation='relu')(x)
 preds = Dense(len(tags_dict), activation='sigmoid')(x)
 
 model = Model(sequence_input, preds)
 model.compile(loss='binary_crossentropy', optimizer='adam')
 
-model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=10, batch_size=64)
+model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=7, batch_size=32)
 
 y_train_preds = model.predict(x_train) 
 threshold = np.arange(0.1,0.9,0.1)
