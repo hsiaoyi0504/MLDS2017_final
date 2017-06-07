@@ -27,8 +27,9 @@ def generator(data, batch_size, sentence_length, vocab_size):
 	batch_targets = np.zeros((batch_size, sentence_length, vocab_size))
 	index = 0
 	while True:
-		batch_sentences = data[:,index:index+sentence_length]
-		batch_targets = to_categorical(data[:,index+1:index+1+sentence_length],vocab_size)
+		batch_sentences[:] = data[:,index:index+sentence_length]
+		for i in range(batch_size):
+			batch_targets[i] = to_categorical(data[i,index+1:index+1+sentence_length],vocab_size)
 		index += sentence_length		
 		if index >= batch_len-sentence_length-1:
 			index = 0
@@ -39,7 +40,7 @@ init_scale = 0.1
 learning_rate = 1.0
 max_grad_norm = 5
 num_layers = 2
-num_steps = 20
+# num_steps = 20
 hidden_size = 1000
 max_epoch = 4
 max_max_epoch = 8
@@ -65,7 +66,7 @@ filter_sizes = [1,2,3,4,5]
 
 model = cnn_model(size, vocab_size, num_steps, filter_sizes)
 # model = rnn_model(size, vocab_size, num_steps)
-
+model.summary()
 checkpointer = ModelCheckpoint(
 						filepath=model_path+"CNN_20170606.hdf5",
 						monitor="loss",
@@ -101,7 +102,6 @@ for i in range(batch_size):
 								target.reshape((-1,num_steps,vocab_size)),
 								verbose=0,
 								sample_weight=valid)
-	print i
 
 cost_list = cost_list.reshape((1040, 5))
 ans = np.argmin(cost_list, axis=1)
