@@ -49,11 +49,9 @@ lr_decay = 0.5
 batch_size = 20
 vocab_size = 20000
 data_path = "./data/"
-
-
-# with h5py.File("data/raw_data.h5",'r') as hf:
-#     train_data=np.array(hf.get('train_data'))
-#     test_data=np.array(hf.get('test_data'))
+model_path = "./model/"
+assert os.path.exists(data_path)
+assert os.path.exists(model_path)
 
 train_data, test_data, word_to_id, chose_len = reader.Holmes_raw_data(data_path, vocab_size)
 num_steps = chose_len
@@ -70,7 +68,7 @@ model = cnn_model(size, vocab_size, num_steps, filter_sizes)
 # model = rnn_model(size, vocab_size, num_steps)
 
 checkpointer = ModelCheckpoint(
-						filepath="model/CNN_20170606.hdf5",
+						filepath=model_path+"CNN_20170606.hdf5",
 						monitor="loss",
 						mode="min",
 						verbose=0,
