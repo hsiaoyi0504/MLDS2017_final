@@ -27,7 +27,6 @@ def generator(data, batch_size, sentence_length, vocab_size):
 	batch_targets = np.zeros((batch_size, sentence_length, vocab_size))
 	index = 0
 	while True:
-		print index
 		batch_sentences = data[:,index:index+sentence_length]
 		batch_targets = to_categorical(data[:,index+1:index+1+sentence_length],vocab_size)
 		index += sentence_length		
