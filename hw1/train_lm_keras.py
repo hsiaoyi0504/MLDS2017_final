@@ -19,19 +19,20 @@ import reader
 from model_keras import *
 
 def generator(data, batch_size, sentence_length, vocab_size):
-
-	# Create empty arrays to contain batch of features and labels#
-	index = 0
+	data_len = data.shape[0]
+	batch_len = data_len // batch_size
+	data = np.reshape(data[0 : batch_size * batch_len],	[batch_size, batch_len])
+	epoch_size = (batch_len - 1) // sentence_length
 	batch_sentences = np.zeros((batch_size, sentence_length))
 	batch_targets = np.zeros((batch_size, sentence_length, vocab_size))
+	index = 0
 	while True:
-		for i in range(batch_size):
-			batch_sentences[i] = data[index:index+sentence_length]
-			batch_targets[i] = to_categorical(data[index+1:index+1+sentence_length],vocab_size)
-			index += sentence_length		
-			if index >= data.shape[0]-sentence_length-1:
-				index = 0
-
+		print index
+		batch_sentences = data[:,index:index+sentence_length]
+		batch_targets = to_categorical(data[:,index+1:index+1+sentence_length],vocab_size)
+		index += sentence_length		
+		if index >= batch_len-sentence_length-1:
+			index = 0
 		yield batch_sentences, batch_targets
 
 """Small config."""
@@ -47,13 +48,13 @@ keep_prob = 1.0
 lr_decay = 0.5
 batch_size = 20
 vocab_size = 20000
+data_path = "./data/"
 
 
 # with h5py.File("data/raw_data.h5",'r') as hf:
 #     train_data=np.array(hf.get('train_data'))
 #     test_data=np.array(hf.get('test_data'))
 
-data_path = "./data/"
 train_data, test_data, word_to_id, chose_len = reader.Holmes_raw_data(data_path, vocab_size)
 num_steps = chose_len
 
