@@ -4,18 +4,18 @@ import numpy as np
 np.random.seed(1166)
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
-from keras.layers import Embedding, Dense, Input, Flatten, Conv1D, MaxPooling1D, Dropout
-from keras.layers.advanced_activations import ThresholdedReLU
+from keras.layers import Embedding, Dense, Input, Flatten, Conv1D, MaxPooling1D, Dropout, concatenate
 from keras.models import Model
+from keras.optimizers import Adam
 from keras import backend as K
 from sklearn.metrics import matthews_corrcoef, f1_score
 
-
 MAX_NUM_WORDS = 20000
-MAX_SEQUENCE_LENGTH = 1000
+MAX_SEQUENCE_LENGTH = 512
 VALIDATION_SPLIT = 0.2
 EMBEDDING_DIM = 100
 SEARCH_THRESHOLD = True
+ALL_TRAIN = True
 
 unique_tags = set()
 tags = []
@@ -63,10 +63,16 @@ data = data[indices]
 labels = labels[indices]
 nb_validation_samples = int(VALIDATION_SPLIT * data.shape[0])
 
-x_train = data[:-nb_validation_samples]
-y_train = labels[:-nb_validation_samples]
-x_val = data[-nb_validation_samples:]
-y_val = labels[-nb_validation_samples:]
+if ALL_TRAIN:
+    x_train = data
+    y_train = labels
+    x_val = data[-nb_validation_samples:]
+    y_val = labels[-nb_validation_samples:]
+else:
+    x_train = data[:-nb_validation_samples]
+    y_train = labels[:-nb_validation_samples]
+    x_val = data[-nb_validation_samples:]
+    y_val = labels[-nb_validation_samples:]
 
 texts_test = []
 ids = []
@@ -100,24 +106,31 @@ for word, i in word_index.items():
         # words not found in embedding index will be all-zeros.
         embedding_matrix[i] = embedding_vector
 
-embedding_layer = Embedding(len(word_index) + 1, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_SEQUENCE_LENGTH, trainable=False)
+embedding_layer = Embedding(len(word_index) + 1, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_SEQUENCE_LENGTH, trainable=True)
 sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
 embedded_sequences = embedding_layer(sequence_input)
-x = Conv1D(1024, 3, activation='relu')(embedded_sequences)
-x = MaxPooling1D(2)(x)
-x = Conv1D(512, 3, activation='relu')(x)
-x = MaxPooling1D(2)(x)
-x = Conv1D(256, 3, activation='relu')(x)
-x = MaxPooling1D(2)(x)
+
+filter_lengths = [3,4,5]
+
+t = []
+for l in filter_lengths:
+    c = Conv1D(128, l, activation='relu')(embedded_sequences)
+    c = MaxPooling1D()(c)
+    t.append(c)
+x = concatenate(t , axis=1)
 x = Flatten()(x)
-x= Dropout(0.2, input_shape=(128,))(x)
-x = Dense(128, activation='relu')(x)
+x = Dropout(0.5)(x)
+x = Dense(256, activation='relu')(x)
+x = Dropout(0.5)(x)
 preds = Dense(len(tags_dict), activation='sigmoid')(x)
 
 model = Model(sequence_input, preds)
-model.compile(loss='binary_crossentropy', optimizer='adam')
+model.compile(loss='binary_crossentropy', optimizer=Adam(lr=0.0001))
 
-model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=7, batch_size=32)
+if ALL_TRAIN:
+    model.fit(x_train, y_train, epochs=10, batch_size=32)
+else:
+    model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=10, batch_size=32)
 
 y_train_preds = model.predict(x_train) 
 
