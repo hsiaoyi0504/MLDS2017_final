@@ -28,6 +28,12 @@ import tensorflow as tf
 def _read_words(filename):
   with tf.gfile.GFile(filename, "r") as f:
     return f.read().decode("utf-8").replace("\n", " <eos> ").split()
+def _read_words_list(filename):
+  data = []
+  with codecs.open("data/holmes.train.txt",'r',encoding='UTF-8') as f:
+    for line in f:
+      data.append(line.replace("\n", " <eos> ").split())
+  return data
 
 def _build_vocab(train_path, test_path, vocab_size):
   # build the dict based on testing data
@@ -53,6 +59,19 @@ def _build_vocab(train_path, test_path, vocab_size):
   return dictionary
 
 
+def _file_to_word_ids_list(filename, word_to_id):
+  data = _read_words_list(filename)
+  """
+  for i in range(len(data)):
+    if data[i] not in word_to_id:
+      data[i] = "<unk>"
+  """
+  data_id=[]
+  for d in data:
+    data_id.append([word_to_id[word] for word in d if word in word_to_id])
+  # return [word_to_id[word] for word in data if word in word_to_id]
+  return data_id
+  
 def _file_to_word_ids(filename, word_to_id):
   data = _read_words(filename)
   """
@@ -114,7 +133,7 @@ def Holmes_raw_data(data_path=None, vocab_size=10000):
   filled_test_path = os.path.join(data_path, "batch_parsed_testing_data.txt")
 
   word_to_id = _build_vocab(train_path, test_path, vocab_size)
-  train_data = _file_to_word_ids(train_path, word_to_id)
+  train_data = _file_to_word_ids_list(train_path, word_to_id)
   test_data = _file_to_word_ids(filled_test_path, word_to_id)
   
   return train_data, test_data, word_to_id, chose_len
