@@ -42,14 +42,16 @@ def generator_cnn(data, batch_size, sentence_length, vocab_size):
 	index=0
 	while True:		
 		for i in range(batch_size):
-			batch_sentences[i] = data[index,:]
-			batch_targets[i] = to_categorical(data[index,:],vocab_size)
+			batch_sentences[i] = data[index,:-1]
+			batch_targets[i] = to_categorical(data[index,1:],vocab_size)
 			index += 1		
 			if index == data.shape[0]-1:
 				index = 0
 		yield batch_sentences, batch_targets
 
+
 """Small config."""
+mode_cnn = True
 init_scale = 0.1
 learning_rate = 0.001
 max_grad_norm = 0.1
@@ -70,43 +72,55 @@ assert os.path.exists(model_path)
 
 train_data, test_data, word_to_id, chose_len = reader.Holmes_raw_data(data_path, vocab_size)
 num_steps = chose_len
-
-train_data = sequence.pad_sequences(train_data, maxlen=num_steps, dtype='int32',
-    padding='post', truncating='post', value=1.)
+if mode_cnn:
+	train_data = sequence.pad_sequences(train_data, maxlen=num_steps+1, dtype='int32',
+    	padding='post', truncating='post', value=1.)
+else:
+	train_data = np.array(train_data)
 test_data = np.array(test_data)
-
-
 
 size = hidden_size
 filter_sizes = [1,2,3,4,5]
-
-model = cnn_model(size, vocab_size, num_steps, filter_sizes)
-# model = rnn_model(size, vocab_size, num_steps, batch_size)
-model.summary()
-opt=SGD(lr=learning_rate, momentum=0.99, decay=0.0, nesterov=True, clipnorm=max_grad_norm)
+if mode_cnn:
+	model = cnn_model(size, vocab_size, num_steps, filter_sizes)
+	opt=SGD(lr=learning_rate, momentum=0.99, decay=0.0, nesterov=True, clipnorm=max_grad_norm)
+else:	
+	model = rnn_model(size, vocab_size, num_steps, batch_size)
+	opt=SGD(lr=learning_rate, clipnorm=max_grad_norm)
 model.compile(loss='categorical_crossentropy', optimizer=opt, sample_weight_mode='temporal')
+model.summary()
+
 checkpointer = ModelCheckpoint(
-						filepath=model_path+"CNN_20170609.hdf5",
+						filepath=model_path+"RNN_20170612.hdf5",
 						monitor="loss",
 						mode="min",
 						verbose=0,
 						save_best_only=True)
-# TB = TensorBoard(log_dir='./logs')
+
+loss = []
+save_loss_callback = LambdaCallback(
+    on_batch_end=lambda batch, logs: loss.append(logs['loss']))
+
 def scheduler(epoch):
 	if epoch < max_epoch:
 		return learning_rate
 	else:
 		return learning_rate*(0.5**(epoch-max_epoch+1))
+if mode_cnn:
+	steps_per_epoch = ((train_data.shape[0] // batch_size) - 1)
+	generator = generator_cnn(train_data,batch_size,num_steps,vocab_size)
+else:
+	steps_per_epoch = ((train_data.shape[0] // batch_size) - 1) // num_steps
+	generator = generator(train_data,batch_size,num_steps,vocab_size)
 
-# steps_per_epoch = ((train_data.shape[0] // batch_size) - 1) // num_steps
-steps_per_epoch = ((train_data.shape[0] // batch_size) - 1)
 for i in range(max_max_epoch):
 	K.set_value(model.optimizer.lr, scheduler(i))
-	model.fit_generator(generator_cnn(train_data,batch_size,num_steps,vocab_size),
+	model.fit_generator(generator,
 						steps_per_epoch=steps_per_epoch, 
 						epochs=1, 
 						verbose=1, 
-						callbacks=[checkpointer])
+						callbacks=[checkpointer, save_loss_callback])
+	np.save("loss.npy",loss)
 	# model.reset_states()
 
 #----------
@@ -115,12 +129,13 @@ for i in range(max_max_epoch):
 wordlen_list = reader.get_wordlen_list(data_path, word_to_id)
 wordlen_list = wordlen_list[0:5200]
 
-def cal_cost_list(stateful, batch_size, test_data, num_steps, vocab_size, wordlen_list, model):
+def cal_cost_list(mode_cnn, batch_size, test_data, num_steps, vocab_size, wordlen_list, model):
 	cost_list = np.zeros((5200))
 	total_sentences = 5200
 	batch_len = test_data.shape[0] // total_sentences
 	test_data = np.reshape(test_data[0 : total_sentences * batch_len], [total_sentences, batch_len])
-	if stateful==False:
+	# Stateful == False
+	if mode_cnn:
 		for i in range(total_sentences):
 			test = test_data[i,:num_steps]
 			target = to_categorical(test_data[i,1:1+num_steps],vocab_size)
@@ -130,6 +145,7 @@ def cal_cost_list(stateful, batch_size, test_data, num_steps, vocab_size, wordle
 										target.reshape((-1,num_steps,vocab_size)),
 										verbose=0,
 										sample_weight=valid)
+	# Stateful == True
 	else:
 		for i in range(total_sentences):
 			test_dummy = np.zeros((batch_size, num_steps))
@@ -146,7 +162,7 @@ def cal_cost_list(stateful, batch_size, test_data, num_steps, vocab_size, wordle
 										sample_weight=valid)
 			model.reset_states()
 	return cost_list
-cost_list = cal_cost_list(False, batch_size, test_data, num_steps, vocab_size, wordlen_list, model)
+cost_list = cal_cost_list(mode_cnn, batch_size, test_data, num_steps, vocab_size, wordlen_list, model)
 cost_list = cost_list.reshape((1040, 5))
 
 ans = np.argmin(cost_list, axis=1)

@@ -23,8 +23,7 @@ def rnn_model(hidden_size, vocab_size, num_steps, batch_size):
 	softmax_layer = TimeDistributed(Dense(vocab_size,activation='softmax'))(x)
 
 	model=Model(sequence_input, softmax_layer)
-	adam=SGD(lr=learning_rate)
-	model.compile(loss='categorical_crossentropy', optimizer=adam, sample_weight_mode='temporal')
+
 	return model
 
 
