@@ -4,25 +4,26 @@ import numpy as np
 np.random.seed(1166)
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
-from keras.layers import Embedding, Dense, Input, Flatten, Conv1D, MaxPooling1D, Dropout
+from keras.layers import Embedding, Dense, Input, Flatten, Conv1D, MaxPooling1D, Dropout, Bidirectional
 from keras.layers.recurrent import LSTM
 from keras.layers.advanced_activations import ThresholdedReLU
 from keras.models import Model
 from keras.callbacks import *
+from keras.optimizers import *
 #from keras import backend as K
 from sklearn.metrics import matthews_corrcoef, f1_score
 import os
 
 # Parameters
 MAX_NUM_WORDS = 20000
-MAX_SEQUENCE_LENGTH = 1000
+MAX_SEQUENCE_LENGTH = 1024
 VALIDATION_SPLIT = 0.2
 EMBEDDING_DIM = 100
 SEARCH_THRESHOLD = True
 MAX_EPOCH = 8
 BATCH_SIZE = 32
 MODEL_PATH = "./model/"
-assert os.path.exist(MODEL_PATH)
+assert os.path.exists(MODEL_PATH)
 
 # Date I/O
 unique_tags = set()
@@ -110,16 +111,17 @@ for word, i in word_index.items():
         embedding_matrix[i] = embedding_vector
 
 
-embedding_layer = Embedding(len(word_index) + 1, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_SEQUENCE_LENGTH, trainable=False, mask_zero=True)
+embedding_layer = Embedding(len(word_index) + 1, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_SEQUENCE_LENGTH, trainable=True, mask_zero=True)
 sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
 
 embedded_sequences = embedding_layer(sequence_input)
-x = LSTM(256, return_sequence=True, implementation=2)(embedded_sequences)
-x = LSTM(256, implementation=2)(x)
-pred = Dense(len(tags_dict), activation='sigmoid')(x)
+#x = Bidirectional(LSTM(256, implementation=2))(embedded_sequences)
+x = Bidirectional(LSTM(256, return_sequences=True, implementation=2))(embedded_sequences)
+x = Bidirectional(LSTM(256, implementation=2))(x)
+preds = Dense(len(tags_dict), activation='sigmoid')(x)
 
 model = Model(sequence_input, preds)
-model.compile(loss='binary_crossentropy', optimizer='adam')
+model.compile(loss='binary_crossentropy', optimizer=RMSprop())
 model.summary()
 checkpointer = ModelCheckpoint(filepath=MODEL_PATH + "rnn.hdf5",
                                monitor="loss",
@@ -128,7 +130,7 @@ checkpointer = ModelCheckpoint(filepath=MODEL_PATH + "rnn.hdf5",
                                save_best_only=True)
 TB = TensorBoard(log_dir='./logs')
 
-model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=MAX_EPOCH, batch_size=BATCH_SIZE)
+model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=MAX_EPOCH, batch_size=BATCH_SIZE, callbacks=[checkpointer,TB], shuffle=True)
 
 y_train_preds = model.predict(x_train) 
 
