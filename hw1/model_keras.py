@@ -28,7 +28,6 @@ def rnn_model(hidden_size, vocab_size, num_steps, batch_size):
 
 
 def cnn_model(hidden_size, vocab_size, num_steps, filter_sizes):
-	num_cnn_filters = hidden_size//len(filter_sizes)
 
 	mask = Masking(mask_value=1., input_shape=(num_steps,))
 	embedding_layer = Embedding(vocab_size, hidden_size, input_length=num_steps)

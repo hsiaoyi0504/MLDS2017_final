@@ -30,7 +30,7 @@ def _read_words(filename):
     return f.read().decode("utf-8").replace("\n", " <eos> ").split()
 def _read_words_list(filename):
   data = []
-  with codecs.open("data/holmes.train.txt",'r',encoding='UTF-8') as f:
+  with codecs.open(filename,'r',encoding='UTF-8') as f:
     for line in f:
       data.append(line.replace("\n", " <eos> ").split())
   return data

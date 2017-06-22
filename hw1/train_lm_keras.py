@@ -80,7 +80,7 @@ else:
 test_data = np.array(test_data)
 
 size = hidden_size
-filter_sizes = [1,2,3,4,5]
+
 if mode_cnn:
 	model = cnn_model(size, vocab_size, num_steps, filter_sizes)
 	opt=SGD(lr=learning_rate, momentum=0.99, decay=0.0, nesterov=True, clipnorm=max_grad_norm)
@@ -91,7 +91,7 @@ model.compile(loss='categorical_crossentropy', optimizer=opt, sample_weight_mode
 model.summary()
 
 checkpointer = ModelCheckpoint(
-						filepath=model_path+"RNN_20170612.hdf5",
+						filepath=model_path+"CNN_model.hdf5",
 						monitor="loss",
 						mode="min",
 						verbose=0,
