@@ -7,4 +7,4 @@ In our final projcet, we investigated two tasks to evaluate the performance of C
 
 ### Usage:
 - `python text_classification/cnn.py` to run basic CNN for text classification
-- `python text_classification/cnn.py` to run CNN combining different filter sizes
+- `python text_classification/cnn_combine_different_filter_size.py` to run CNN combining different filter sizes
