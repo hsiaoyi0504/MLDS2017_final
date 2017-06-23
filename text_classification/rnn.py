@@ -1,170 +1,242 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
-from itertools import islice
+
 import numpy as np
-np.random.seed(1166)
+np.random.seed(0)
+
+import string
+import sys
+from collections import Counter
+import argparse
+import six
+
+import keras.backend as K 
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
-from keras.layers import Embedding, Dense, Input, Flatten, Conv1D, MaxPooling1D, Dropout, Bidirectional
-from keras.layers.recurrent import LSTM
-from keras.layers.advanced_activations import ThresholdedReLU
-from keras.models import Model
-from keras.callbacks import *
-from keras.optimizers import *
-#from keras import backend as K
-from sklearn.metrics import matthews_corrcoef, f1_score
-import os
+from keras.models import load_model, Sequential, Model
+from keras.layers import Dense, Dropout, Input
+from keras.layers import GRU, Convolution1D, MaxPooling1D, Flatten, Merge
+from keras.layers.embeddings import Embedding
+from keras.optimizers import Adam
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 
-# Parameters
-MAX_NUM_WORDS = 20000
-MAX_SEQUENCE_LENGTH = 1024
-VALIDATION_SPLIT = 0.2
-EMBEDDING_DIM = 100
-SEARCH_THRESHOLD = True
-MAX_EPOCH = 8
-BATCH_SIZE = 32
-MODEL_PATH = "./model/"
-assert os.path.exists(MODEL_PATH)
+parser = argparse.ArgumentParser()
+parser.add_argument('--op', type=str, default="train", help='train/test')
+parser.add_argument('--restore', type=bool, default=False, help='Restore model or not')
+args = parser.parse_args()
 
-# Date I/O
-unique_tags = set()
-tags = []
-texts = []
-with open('./data/train_data.csv') as f:
-    for line in islice(f,1,None):
-        temp = line.rstrip('\n')
-        temp = temp.split('"')
-        tgs = temp[1].split(' ')
-        for t in tgs:
-            unique_tags.add(t)
-        temp = temp[2:]
-        text = ''
-        for t in temp:
-            text += t
-        text = text.lstrip(',')
-        tags.append(tgs)
-        texts.append(text)
+train_path = "data/train_data.csv"
+test_path = "data/test_data.csv"
+output_path = "data/output.csv"
+model_path = "model/rnn.hdf5"
+tokenizer_path = "model/tokenizer.pkl"
+word_index_path = "model/word_index.npy"
 
-tags_dict = {}
-reverse_tags_dict = {}
-i = 0
-for t in unique_tags:
-    tags_dict[t] = i
-    reverse_tags_dict[i] = t
-    i += 1
-labels = []
-for tgs in tags:
-    temp = np.zeros(len(tags_dict))
-    for t in tgs:
-        temp[tags_dict[t]] = 1
-    labels.append(temp)
-labels = np.asarray(labels)
-tokenizer = Tokenizer(num_words=MAX_NUM_WORDS)
-tokenizer.fit_on_texts(texts)
-sequences = tokenizer.texts_to_sequences(texts)
+#####################
+###   parameter   ###
+#####################
+split_ratio = 0.1
+embedding_dim = 100
+nb_epoch = 1000
+batch_size = 128
 
-word_index = tokenizer.word_index
-print('Found %s unique tokens.' % len(word_index))
+################
+###   Util   ###
+################
+def read_data(path, training):
+    print ('Reading data from ',path)
+    with open(path,'r') as f:
+    
+        tags = []
+        articles = []
+        tags_list = []
+        
+        f.readline()
+        for line in f:
+            if training :
+                start = line.find('\"')
+                end = line.find('\"',start+1)
+                tag = line[start+1:end].split(' ')
+                article = line[end+2:]
+                
+                for t in tag :
+                    if t not in tags_list:
+                        tags_list.append(t)
+               
+                tags.append(tag)
+            else:
+                start = line.find(',')
+                article = line[start+1:]
+            
+            articles.append(article)
+            
+        if training :
+            assert len(tags_list) == 38,(len(tags_list))
+            assert len(tags) == len(articles)
+    return (tags,articles,tags_list)
 
-data = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
-indices = np.arange(data.shape[0])
-np.random.shuffle(indices)
-data = data[indices]
-labels = labels[indices]
-nb_validation_samples = int(VALIDATION_SPLIT * data.shape[0])
+def get_embedding_dict(path):
+    embedding_dict = {}
+    with open(path,'r') as f:
+        for line in f:
+            values = line.split(' ')
+            word = values[0]
+            coefs = np.asarray(values[1:],dtype='float32')
+            embedding_dict[word] = coefs
+    return embedding_dict
 
-x_train = data[:-nb_validation_samples]
-y_train = labels[:-nb_validation_samples]
-x_val = data[-nb_validation_samples:]
-y_val = labels[-nb_validation_samples:]
+def get_embedding_matrix(word_index,embedding_dict,num_words,embedding_dim):
+    embedding_matrix = np.zeros((num_words,embedding_dim))
+    for word, i in word_index.items():
+        if i < num_words:
+            embedding_vector = embedding_dict.get(word)
+            if embedding_vector is not None:
+                embedding_matrix[i] = embedding_vector
+    return embedding_matrix
 
-texts_test = []
-ids = []
-with open('./data/test_data.csv') as f:
-    for line in islice(f,1,None):
-        temp = line.rstrip('\n')
-        temp = temp.split(',')
-        id = temp[0]
-        text = ''
-        temp = temp[1:]
-        for t in temp:
-            text += t
-        ids.append(id)
-        texts_test.append(text)
-sequences_test = tokenizer.texts_to_sequences(texts_test)
-x_test = pad_sequences(sequences_test, maxlen=MAX_SEQUENCE_LENGTH)
+def to_multi_categorical(tags,tags_list): 
+    tags_num = len(tags)
+    tags_class = len(tags_list)
+    Y_data = np.zeros((tags_num,tags_class),dtype = 'float32')
+    for i in range(tags_num):
+        for tag in tags[i] :
+            Y_data[i][tags_list.index(tag)]=1
+        assert np.sum(Y_data) > 0
+    return Y_data
 
-# Model
-embeddings_index = {}
-with open('./data/glove.6B.100d.txt') as f:
-    for line in f:
-        values = line.split()
-        word = values[0]
-        coefs = np.asarray(values[1:], dtype='float32')
-        embeddings_index[word] = coefs
-print('Found %s word vectors.' % len(embeddings_index))
+def split_data(X,Y,split_ratio):
+    indices = np.arange(X.shape[0])  
+    np.random.shuffle(indices) 
+    
+    X_data = X[indices]
+    Y_data = Y[indices]
+    
+    num_validation_sample = int(split_ratio * X_data.shape[0] )
+    
+    X_train = X_data[num_validation_sample:]
+    Y_train = Y_data[num_validation_sample:]
 
-embedding_matrix = np.zeros((len(word_index) + 1, EMBEDDING_DIM))
-for word, i in word_index.items():
-    embedding_vector = embeddings_index.get(word)
-    if embedding_vector is not None:
-        # words not found in embedding index will be all-zeros.
-        embedding_matrix[i] = embedding_vector
+    X_val = X_data[:num_validation_sample]
+    Y_val = Y_data[:num_validation_sample]
+
+    return (X_train,Y_train),(X_val,Y_val)
+
+###########################
+###   custom metrices   ###
+###########################
+def f1_score(y_true,y_pred):
+    thresh = 0.4
+    y_pred = K.cast(K.greater(y_pred,thresh),dtype='float32')
+    tp = K.sum(y_true * y_pred,axis=-1)
+    
+    precision=tp/(K.sum(y_pred,axis=-1)+K.epsilon())
+    recall=tp/(K.sum(y_true,axis=-1)+K.epsilon())
+    return K.mean(2*((precision*recall)/(precision+recall+K.epsilon())))
+
+#########################
+###   Main function   ###
+#########################
+def main():
+    ### read training and testing data
+    (Y_data, X_data, tag_list) = read_data(train_path, True)
+    (_, X_test,_) = read_data(test_path,False)
+    all_corpus = X_data + X_test
+    print('Find %d articles.' %(len(all_corpus)))
+    
+    if args.restore or (args.op == "test"):
+        print('Load tokenizer...')
+        tokenizer = six.moves.cPickle.load(open(tokenizer_path))
+    else:
+        ### tokenizer for all data
+        tokenizer = Tokenizer()
+        tokenizer.fit_on_texts(all_corpus)
+        print('Saving tokenizer to ', tokenizer_path)
+        six.moves.cPickle.dump(tokenizer, open(tokenizer_path, "wb"))
+    word_index = tokenizer.word_index
+
+    ### convert word sequences to index sequence
+    print ('Convert to index sequences.')
+    train_sequences = tokenizer.texts_to_sequences(X_data)
+    test_sequences = tokenizer.texts_to_sequences(X_test)
+
+    ### padding to equal length
+    print ('Padding sequences.')
+    train_sequences = pad_sequences(train_sequences)
+    max_article_length = train_sequences.shape[1]
+    test_sequences = pad_sequences(test_sequences,maxlen=max_article_length)
+    
+    ###
+    train_tag = to_multi_categorical(Y_data,tag_list) 
+    
+    ### split data into training set and validation set
+    (X_train,Y_train),(X_val,Y_val) = split_data(train_sequences,train_tag,split_ratio)
+    
+    ### get mebedding matrix from glove
+    print('Get embedding dict from glove.')
+    embedding_dict = get_embedding_dict('data/glove.6B.%dd.txt' % embedding_dim)
+    print('Found %s word vectors.' % len(embedding_dict))
+    num_words = len(word_index) + 1
+    print('Create embedding matrix.')
+    embedding_matrix = get_embedding_matrix(word_index,embedding_dict,num_words,embedding_dim)
+
+    if args.restore or (args.op == "test"):
+        model = load_model(model_path, custom_objects={'f1_score':f1_score})
+    else:
+        ### build model from scratch
+        print('Building model.')
+        model = Sequential()
+        model.add(Embedding(num_words,
+                            embedding_dim,
+                            weights=[embedding_matrix],
+                            input_length=max_article_length,
+                            trainable=False))
+        dropout_prob = 0.3
+        model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
+        model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
+        model.add(GRU(128, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob))
+        model.add(Dense(256, activation='relu'))
+        model.add(Dropout(dropout_prob))
+        model.add(Dense(128, activation='relu'))
+        model.add(Dropout(dropout_prob))
+        model.add(Dense(64, activation='relu'))
+        model.add(Dropout(dropout_prob))
+        model.add(Dense(38, activation='sigmoid'))
+        model.summary()
+
+    adam = Adam(lr=0.001, decay=1e-6, clipvalue=0.5)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=adam,
+                  metrics=[f1_score])
+    
+    if args.op == "train":
+        earlystopping = EarlyStopping(monitor='val_f1_score', patience=20, verbose=1, mode='max')
+        checkpoint = ModelCheckpoint(filepath=model_path,
+                                     verbose=1,
+                                     save_best_only=True,
+                                     save_weights_only=False,
+                                     monitor='val_f1_score',
+                                     mode='max')
+        hist = model.fit(X_train, Y_train, 
+                         validation_data=(X_val, Y_val),
+                         epochs=nb_epoch, 
+                         batch_size=batch_size,
+                         callbacks=[earlystopping,checkpoint])
+
+    elif args.op == "test":
+        Y_pred = model.predict(test_sequences)
+        thresh = 0.4
+        with open(output_path,'w') as output:
+            print('\"id\",\"tags\"',file=output)
+            Y_pred_thresh = (Y_pred > thresh).astype('int')
+            for index,labels in enumerate(Y_pred_thresh):
+                labels = [tag_list[i] for i,value in enumerate(labels) if value==1 ]
+                labels_original = ' '.join(labels)
+                print('\"%d\",\"%s\"'%(index,labels_original),file=output)
+
+    else:
+        print("invalid op")
 
 
-embedding_layer = Embedding(len(word_index) + 1, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_SEQUENCE_LENGTH, trainable=True, mask_zero=True)
-sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
-
-embedded_sequences = embedding_layer(sequence_input)
-#x = Bidirectional(LSTM(256, implementation=2))(embedded_sequences)
-x = Bidirectional(LSTM(256, return_sequences=True, implementation=2))(embedded_sequences)
-x = Bidirectional(LSTM(256, implementation=2))(x)
-preds = Dense(len(tags_dict), activation='sigmoid')(x)
-
-model = Model(sequence_input, preds)
-model.compile(loss='binary_crossentropy', optimizer=RMSprop())
-model.summary()
-checkpointer = ModelCheckpoint(filepath=MODEL_PATH + "rnn.hdf5",
-                               monitor="loss",
-                               mode="min",
-                               verbose=0,
-                               save_best_only=True)
-TB = TensorBoard(log_dir='./logs')
-
-model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=MAX_EPOCH, batch_size=BATCH_SIZE, callbacks=[checkpointer,TB], shuffle=True)
-
-y_train_preds = model.predict(x_train) 
-
-# Testing
-if SEARCH_THRESHOLD:
-    threshold = np.arange(0.1,0.9,0.05)
-    acc = []
-    accuracies = []
-    best_threshold = np.zeros(y_train_preds.shape[1])
-    for i in range(y_train_preds.shape[1]):
-        y_prob = np.array(y_train_preds[:,i])
-        for j in threshold:
-            y_pred = [1 if prob>=j else 0 for prob in y_prob]
-            acc.append( f1_score(y_train[:,i],y_pred) )
-            acc = np.array(acc)
-            index = np.where(acc==acc.max()) 
-            accuracies.append(acc.max()) 
-            best_threshold[i] = threshold[index[0][0]]
-            acc = []
-
-    y_test = model.predict(x_test)
-    y_test = np.array([[1 if y_test[i,j]>=best_threshold[j] else 0 for j in range(y_test.shape[1])] for i in range(len(y_test))])
-else:
-    y_test = model.predict(x_test)
-    y_test = np.array([[1 if y_test[i,j]>=0.5 else 0 for j in range(y_test.shape[1])] for i in range(len(y_test))])
-
-labels_test = []
-for y in y_test:
-    temp = []
-    for i in range(len(y)):
-        if y[i] == 1:
-            temp.append(reverse_tags_dict[i])
-    labels_test.append(temp)
-with open('submission.txt', 'w') as f:
-    f.write('"id","tags"\n')
-    for id, t in zip(ids, labels_test):
-        f.write('"{}","{}"\n'.format(id," ".join(t)))
+if __name__=='__main__':
+    main()
