@@ -29,9 +29,8 @@ args = parser.parse_args()
 train_path = "data/train_data.csv"
 test_path = "data/test_data.csv"
 output_path = "data/output.csv"
-model_path = "model/rnn.hdf5"
-tokenizer_path = "model/tokenizer.pkl"
-word_index_path = "model/word_index.npy"
+model_path = "model/RNN/rnn.hdf5"
+tokenizer_path = "model/RNN/tokenizer.pkl"
 
 #####################
 ###   parameter   ###
