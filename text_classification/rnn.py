@@ -16,9 +16,10 @@ from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 from keras.models import load_model, Sequential, Model
 from keras.layers import Dense, Dropout, Input
-from keras.layers import GRU, Convolution1D, MaxPooling1D, Flatten, Merge
+from keras.layers import GRU, Convolution1D, MaxPooling1D, Flatten, Merge, Bidirectional
+from keras.layers.recurrent import LSTM
 from keras.layers.embeddings import Embedding
-from keras.optimizers import Adam
+from keras.optimizers import Adam, RMSprop
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 
 parser = argparse.ArgumentParser()
@@ -35,8 +36,12 @@ tokenizer_path = "model/RNN/tokenizer.pkl"
 #####################
 ###   parameter   ###
 #####################
+CONFIG = 2
 split_ratio = 0.1
-embedding_dim = 100
+if CONFIG == 7:
+    embedding_dim = 300
+else:
+    embedding_dim = 100
 nb_epoch = 1000
 batch_size = 128
 
@@ -182,8 +187,10 @@ def main():
     if args.restore or (args.op == "test"):
         model = load_model(model_path, custom_objects={'f1_score':f1_score})
     else:
+        CONFIG = 2
         ### build model from scratch
         print('Building model.')
+
         model = Sequential()
         model.add(Embedding(num_words,
                             embedding_dim,
@@ -191,9 +198,22 @@ def main():
                             input_length=max_article_length,
                             trainable=False))
         dropout_prob = 0.3
-        model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
-        model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
-        model.add(GRU(128, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob))
+        if CONFIG == 1:
+            model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
+            model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
+            model.add(GRU(128, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob))
+        elif CONFIG == 2 or CONFIG == 3:
+            model.add(Bidirectional(LSTM(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+            model.add(Bidirectional(LSTM(128, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+        elif CONFIG == 4:
+            model.add(Bidirectional(LSTM(128, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+        elif CONFIG == 5:
+            model.add(Bidirectional(LSTM(256, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+            model.add(Bidirectional(LSTM(256, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+        else: # CONFIG == 6 or CONFIG == 7
+            model.add(Bidirectional(LSTM(512, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+            model.add(Bidirectional(LSTM(512, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+
         model.add(Dense(256, activation='relu'))
         model.add(Dropout(dropout_prob))
         model.add(Dense(128, activation='relu'))
@@ -202,10 +222,13 @@ def main():
         model.add(Dropout(dropout_prob))
         model.add(Dense(38, activation='sigmoid'))
         model.summary()
-
-    adam = Adam(lr=0.001, decay=1e-6, clipvalue=0.5)
+    if CONFIG == 1 or CONFIG == 2:
+        optimizer = Adam(lr=0.001, decay=1e-6, clipvalue=0.5)
+    else: # CONFIG == 3 or CONFIG == 4 or CONFIG == 5 or CONFIG == 6 or CONFIG == 7
+        optimizer = RMSprop()
+    
     model.compile(loss='categorical_crossentropy',
-                  optimizer=adam,
+                  optimizer=optimizer,
                   metrics=[f1_score])
     
     if args.op == "train":
