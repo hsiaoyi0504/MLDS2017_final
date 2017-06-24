@@ -187,7 +187,6 @@ def main():
     if args.restore or (args.op == "test"):
         model = load_model(model_path, custom_objects={'f1_score':f1_score})
     else:
-        CONFIG = 2
         ### build model from scratch
         print('Building model.')
 
