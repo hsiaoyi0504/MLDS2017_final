@@ -212,8 +212,8 @@ def main():
             model.add(Bidirectional(LSTM(256, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
             model.add(Bidirectional(LSTM(256, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob)))
         elif CONFIG == 5:
-            model.add(Bidirectional(LSTM(256, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
-            model.add(Bidirectional(LSTM(256, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+            model.add(LSTM(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
+            model.add(LSTM(128, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
         else: # CONFIG == 6 or CONFIG == 7
             model.add(Bidirectional(LSTM(512, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
             model.add(Bidirectional(LSTM(512, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
