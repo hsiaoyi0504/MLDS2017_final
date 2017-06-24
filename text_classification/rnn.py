@@ -36,7 +36,7 @@ tokenizer_path = "model/RNN/tokenizer.pkl"
 #####################
 ###   parameter   ###
 #####################
-CONFIG = 2
+CONFIG = 5
 split_ratio = 0.1
 if CONFIG == 7:
     embedding_dim = 300
@@ -150,7 +150,7 @@ def main():
     
     if args.restore or (args.op == "test"):
         print('Load tokenizer...')
-        tokenizer = six.moves.cPickle.load(open(tokenizer_path))
+        tokenizer = six.moves.cPickle.load(open(tokenizer_path, "rb"))
     else:
         ### tokenizer for all data
         tokenizer = Tokenizer()
@@ -201,11 +201,16 @@ def main():
             model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
             model.add(GRU(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
             model.add(GRU(128, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob))
-        elif CONFIG == 2 or CONFIG == 3:
+        elif CONFIG == 2:
             model.add(Bidirectional(LSTM(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
             model.add(Bidirectional(LSTM(128, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+        elif CONFIG == 3:
+            model.add(LSTM(128, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
+            model.add(LSTM(128, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob))
         elif CONFIG == 4:
-            model.add(Bidirectional(LSTM(128, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+            model.add(Bidirectional(LSTM(256, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+            model.add(Bidirectional(LSTM(256, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
+            model.add(Bidirectional(LSTM(256, activation='tanh',recurrent_dropout=dropout_prob, dropout=dropout_prob)))
         elif CONFIG == 5:
             model.add(Bidirectional(LSTM(256, return_sequences=True, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
             model.add(Bidirectional(LSTM(256, activation='tanh', recurrent_dropout=dropout_prob, dropout=dropout_prob)))
@@ -221,9 +226,9 @@ def main():
         model.add(Dropout(dropout_prob))
         model.add(Dense(38, activation='sigmoid'))
         model.summary()
-    if CONFIG == 1 or CONFIG == 2:
+    if CONFIG == 1 or CONFIG == 2 or CONFIG == 3 or CONFIG == 4 or CONFIG == 5:
         optimizer = Adam(lr=0.001, decay=1e-6, clipvalue=0.5)
-    else: # CONFIG == 3 or CONFIG == 4 or CONFIG == 5 or CONFIG == 6 or CONFIG == 7
+    else: # CONFIG == 6 or CONFIG == 7
         optimizer = RMSprop()
     
     model.compile(loss='categorical_crossentropy',
