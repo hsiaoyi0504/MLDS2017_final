@@ -16,7 +16,7 @@ from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 from keras.models import load_model, Sequential, Model
 from keras.layers import Dense, Dropout, Input
-from keras.layers import GRU, Conv1D, GlobalMaxPooling1D, Flatten, Merge, concatenate, MaxPooling1D
+from keras.layers import GRU, Convolution1D, Convolution2D, MaxPooling1D, MaxPooling2D, Reshape, Flatten, merge, GlobalMaxPooling1D
 from keras.layers.embeddings import Embedding
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -186,30 +186,34 @@ def main():
     else:
         ### build model from scratch
         print('Building model.')
-        model = Sequential()
-        model.add(Embedding(num_words,
+        inputs = Input(shape=(max_article_length,), dtype='int32')
+        embedding = Embedding(num_words,
                             embedding_dim,
                             weights=[embedding_matrix],
                             input_length=max_article_length,
-                            trainable=False))
+                            trainable=False)(inputs)
+        reshape = Reshape((max_article_length, embedding_dim, 1))(embedding)
 
-        graph_in = Input(shape=(max_article_length, embedding_dim))
-        t = []
-        for l in filter_sizes:
-            c = Conv1D(1024, l, activation='relu')(graph_in)
-            c = GlobalMaxPooling1D()(c)
-            t.append(c)
-        x = concatenate(t , axis=1)
-        #x = Flatten()(x)
-        x = Dropout(0.7)(x)
-        graph = Model(input=graph_in, output=x)
+        conv_0 = Convolution2D(num_filters, filter_sizes[0], embedding_dim, border_mode='valid', init='normal', activation='relu', dim_ordering='tf')(reshape)
+        conv_1 = Convolution2D(num_filters, filter_sizes[1], embedding_dim, border_mode='valid', init='normal', activation='relu', dim_ordering='tf')(reshape)
+        conv_2 = Convolution2D(num_filters, filter_sizes[2], embedding_dim, border_mode='valid', init='normal', activation='relu', dim_ordering='tf')(reshape)
 
-        model.add(graph)
-        model.add(Dense(256, activation='relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(128, activation='relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(38, activation='sigmoid'))
+        maxpool_0 = MaxPooling2D(pool_size=(max_article_length - filter_sizes[0] + 1, 1), strides=(1,1), border_mode='valid', dim_ordering='tf')(conv_0)
+        maxpool_1 = MaxPooling2D(pool_size=(max_article_length - filter_sizes[1] + 1, 1), strides=(1,1), border_mode='valid', dim_ordering='tf')(conv_1)
+        maxpool_2 = MaxPooling2D(pool_size=(max_article_length - filter_sizes[2] + 1, 1), strides=(1,1), border_mode='valid', dim_ordering='tf')(conv_2)
+
+        merged_tensor = merge([maxpool_0, maxpool_1, maxpool_2], mode='concat', concat_axis=1)
+        flatten = Flatten()(merged_tensor)
+        flatten = Dropout(0.8)(flatten)
+
+        dense = Dense(512, activation='relu')(flatten)
+        dense = Dropout(0.7)(dense)
+        dense = Dense(256, activation='relu')(flatten)
+        dense = Dropout(0.5)(dense)
+        dense = Dense(128, activation='relu')(dense)
+        dense = Dropout(0.3)(dense)
+        output = Dense(38, activation='sigmoid')(dense)
+        model = Model(input=inputs, output=output)
         model.summary()
 
     adam = Adam(lr=0.001, decay=1e-6, clipvalue=0.5)
@@ -218,7 +222,7 @@ def main():
                   metrics=[f1_score])
     
     if args.op == "train":
-        earlystopping = EarlyStopping(monitor='val_f1_score', patience=20, verbose=1, mode='max')
+        earlystopping = EarlyStopping(monitor='val_f1_score', patience=30, verbose=1, mode='max')
         checkpoint = ModelCheckpoint(filepath=model_path,
                                      verbose=1,
                                      save_best_only=True,
