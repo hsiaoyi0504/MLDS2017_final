@@ -1,6 +1,11 @@
 # Final Project of MLDS2017@NTU
 
 In our final projcet, we investigated two tasks to evaluate the performance of CNN and RNN on text-related tasks.
+
+- Text classification (predict tag (topic) of article)
+  - Multi-class Multi-label classifcation
+- Microsoft Sentence Completion Challenge
+
 Our presentation is available [here](https://docs.google.com/presentation/d/1rtLtwI3r1-hqeOqqX1-sJdbcqSftNNGxhkRgBSFnXvc/edit#slide=id.p).
 
 ### Repo Structure:
