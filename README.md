@@ -3,7 +3,7 @@
 In our final projcet, we investigated two tasks to evaluate the performance of CNN and RNN on text-related tasks.
 
 - Text classification (predict tag (topic) of article)
-  - Multi-class Multi-label classifcation
+  - Multi-class multi-label classifcation
   - HW5 of ML2017
 - [Microsoft Sentence Completion Challenge](https://www.microsoft.com/en-us/research/publication/the-microsoft-research-sentence-completion-challenge/)
   - HW1 of MLDS2017
